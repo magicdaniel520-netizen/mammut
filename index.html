@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>台灣山岳紀錄 App</title>
     
+    <!-- 錯誤攔截器：若發生全白畫面，會跳出視窗顯示錯誤原因 -->
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            alert("程式發生錯誤：\n" + message + "\n行數：" + lineno);
+        };
+    </script>
+
     <!-- 1. 載入 Tailwind CSS (樣式) -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -15,20 +22,31 @@
     <!-- 3. 載入 Babel (瀏覽器端 JSX 編譯) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- 4. 改用 Lucide (Vanilla JS 版本)，穩定性更高 -->
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- 4. 改用 Lucide (Vanilla JS UMD 版本) -->
+    <!-- 修正：明確指定 dist/umd/lucide.js 以確保 window.lucide 變數存在 -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 </head>
 <body class="bg-slate-100">
-    <div id="root"></div>
+    <!-- 加入預設文字，若 React 失敗，使用者會看到此文字而非全白 -->
+    <div id="root" class="flex h-screen items-center justify-center text-slate-500">
+        正在載入應用程式...<br>
+        (若長時間停留在此畫面，請檢查 taiwan_map.png 是否存在)
+    </div>
 
     <script type="text/babel">
+        // 檢查 Lucide 是否載入成功
+        if (typeof lucide === 'undefined') {
+            throw new Error("Lucide 圖示庫載入失敗，請檢查網路連線或 CDN 設定。");
+        }
+
         const { useState, useEffect, useMemo } = React;
 
-        // --- Lucide Icon 轉換器 (修復 Error 的關鍵) ---
+        // --- Lucide Icon 轉換器 ---
         // 將 Lucide 的 SVG 資料轉換為 React 元件
         const createLucideIcon = (iconName) => (props) => {
             const iconData = lucide.icons[iconName];
             if (!iconData) {
+                // 如果找不到圖示，回傳 null 避免報錯
                 console.warn(`Icon ${iconName} not found`);
                 return null;
             }
@@ -56,8 +74,9 @@
         const Download = createLucideIcon('Download');
         const Upload = createLucideIcon('Upload');
         const Calendar = createLucideIcon('Calendar');
-        const CheckCircle2 = createLucideIcon('CheckCircle2') || createLucideIcon('CheckCircle'); // Fallback
-        const MapIcon = createLucideIcon('Map'); // Alias Map -> MapIcon
+        // 嘗試載入 CheckCircle2，若無則使用 CheckCircle
+        const CheckCircle2 = createLucideIcon('CheckCircle2');
+        const MapIcon = createLucideIcon('Map');
         const Mountain = createLucideIcon('Mountain');
         const Trees = createLucideIcon('Trees');
         const Plus = createLucideIcon('Plus');
