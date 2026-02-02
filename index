@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台灣山岳紀錄 App</title>
+    
+    <!-- 1. 載入 Tailwind CSS (樣式) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. 載入 React 和 ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- 3. 載入 Babel (瀏覽器端 JSX 編譯) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 4. 改用 Lucide (Vanilla JS 版本)，穩定性更高 -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-100">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- Lucide Icon 轉換器 (修復 Error 的關鍵) ---
+        // 將 Lucide 的 SVG 資料轉換為 React 元件
+        const createLucideIcon = (iconName) => (props) => {
+            const iconData = lucide.icons[iconName];
+            if (!iconData) {
+                console.warn(`Icon ${iconName} not found`);
+                return null;
+            }
+            
+            // Lucide 結構: [tag, attrs, children]
+            const [tag, attrs, children] = iconData;
+
+            return React.createElement(
+                tag,
+                {
+                    ...attrs,
+                    width: props.size || attrs.width || 24,
+                    height: props.size || attrs.height || 24,
+                    stroke: props.color || attrs.stroke || "currentColor",
+                    className: props.className,
+                    ...props
+                },
+                children.map(([childTag, childAttrs], index) => 
+                    React.createElement(childTag, { ...childAttrs, key: index })
+                )
+            );
+        };
+
+        // 產生 App 需要的圖示元件
+        const Download = createLucideIcon('Download');
+        const Upload = createLucideIcon('Upload');
+        const Calendar = createLucideIcon('Calendar');
+        const CheckCircle2 = createLucideIcon('CheckCircle2') || createLucideIcon('CheckCircle'); // Fallback
+        const MapIcon = createLucideIcon('Map'); // Alias Map -> MapIcon
+        const Mountain = createLucideIcon('Mountain');
+        const Trees = createLucideIcon('Trees');
+        const Plus = createLucideIcon('Plus');
+        const Trash2 = createLucideIcon('Trash2');
+        const X = createLucideIcon('X');
+        const MapPin = createLucideIcon('MapPin');
+        const Filter = createLucideIcon('Filter');
+        const Settings = createLucideIcon('Settings');
+        const Search = createLucideIcon('Search');
+
+        // --- 完整資料集 (百岳100 + 小百岳100) ---
+        const INITIAL_PEAKS = [
+          // === 百岳 (100座) ===
+          { id: 'b001', name: '玉山主峰', type: 'baiyue', elevation: 3952, location: '南投縣/高雄市', lat: 23.4700, lon: 120.9573, logs: [] },
+          { id: 'b002', name: '雪山主峰', type: 'baiyue', elevation: 3886, location: '苗栗縣/台中市', lat: 24.3833, lon: 121.2333, logs: [] },
+          { id: 'b003', name: '玉山東峰', type: 'baiyue', elevation: 3869, location: '南投縣/高雄市', lat: 23.4706, lon: 120.9635, logs: [] },
+          { id: 'b004', name: '玉山北峰', type: 'baiyue', elevation: 3858, location: '南投縣', lat: 23.4864, lon: 120.9595, logs: [] },
+          { id: 'b005', name: '玉山南峰', type: 'baiyue', elevation: 3844, location: '高雄市', lat: 23.4542, lon: 120.9587, logs: [] },
+          { id: 'b006', name: '秀姑巒山', type: 'baiyue', elevation: 3805, location: '南投縣/花蓮縣', lat: 23.4996, lon: 121.0562, logs: [] },
+          { id: 'b007', name: '馬博拉斯山', type: 'baiyue', elevation: 3785, location: '南投縣/花蓮縣', lat: 23.5233, lon: 121.0658, logs: [] },
+          { id: 'b008', name: '南湖大山', type: 'baiyue', elevation: 3742, location: '台中市/花蓮縣', lat: 24.3633, lon: 121.4333, logs: [] },
+          { id: 'b009', name: '東小南山', type: 'baiyue', elevation: 3711, location: '高雄市', lat: 23.4475, lon: 120.9574, logs: [] },
+          { id: 'b010', name: '中央尖山', type: 'baiyue', elevation: 3705, location: '台中市/花蓮縣', lat: 24.3168, lon: 121.4165, logs: [] },
+          { id: 'b011', name: '雪山北峰', type: 'baiyue', elevation: 3703, location: '苗栗縣/台中市', lat: 24.4172, lon: 121.2339, logs: [] },
+          { id: 'b012', name: '大水窟山', type: 'baiyue', elevation: 3642, location: '南投縣/花蓮縣', lat: 23.4478, lon: 121.0423, logs: [] },
+          { id: 'b013', name: '南湖大山東峰', type: 'baiyue', elevation: 3632, location: '台中市/花蓮縣/宜蘭縣', lat: 24.3600, lon: 121.4423, logs: [] },
+          { id: 'b014', name: '關山', type: 'baiyue', elevation: 3668, location: '高雄市/台東縣', lat: 23.2847, lon: 120.9254, logs: [] },
+          { id: 'b015', name: '奇萊主峰北峰', type: 'baiyue', elevation: 3607, location: '花蓮縣', lat: 24.0681, lon: 121.3211, logs: [] },
+          { id: 'b016', name: '向陽山', type: 'baiyue', elevation: 3603, location: '高雄市/台東縣', lat: 23.2831, lon: 120.9839, logs: [] },
+          { id: 'b017', name: '大劍山', type: 'baiyue', elevation: 3594, location: '台中市', lat: 24.3317, lon: 121.1969, logs: [] },
+          { id: 'b018', name: '雲峰', type: 'baiyue', elevation: 3564, location: '高雄市', lat: 23.4117, lon: 121.0039, logs: [] },
+          { id: 'b019', name: '奇萊主峰', type: 'baiyue', elevation: 3560, location: '南投縣/花蓮縣', lat: 24.0536, lon: 121.3164, logs: [] },
+          { id: 'b020', name: '馬利加南山', type: 'baiyue', elevation: 3546, location: '南投縣/花蓮縣', lat: 23.5186, lon: 121.1008, logs: [] },
+          { id: 'b021', name: '南湖北山', type: 'baiyue', elevation: 3536, location: '台中市/宜蘭縣', lat: 24.3756, lon: 121.4439, logs: [] },
+          { id: 'b022', name: '大雪山', type: 'baiyue', elevation: 3530, location: '苗栗縣/台中市', lat: 24.3211, lon: 121.1278, logs: [] },
+          { id: 'b023', name: '品田山', type: 'baiyue', elevation: 3524, location: '新竹縣/台中市', lat: 24.4283, lon: 121.2647, logs: [] },
+          { id: 'b024', name: '玉山西峰', type: 'baiyue', elevation: 3518, location: '南投縣/嘉義縣', lat: 23.4697, lon: 120.9350, logs: [] },
+          { id: 'b025', name: '頭鷹山', type: 'baiyue', elevation: 3510, location: '苗栗縣/台中市', lat: 24.3242, lon: 121.1553, logs: [] },
+          { id: 'b026', name: '三叉山', type: 'baiyue', elevation: 3496, location: '高雄市/花蓮縣/台東縣', lat: 23.2942, lon: 121.0264, logs: [] },
+          { id: 'b027', name: '大霸尖山', type: 'baiyue', elevation: 3492, location: '新竹縣/苗栗縣', lat: 24.4649, lon: 121.2504, logs: [] },
+          { id: 'b028', name: '南湖大山南峰', type: 'baiyue', elevation: 3470, location: '台中市/花蓮縣', lat: 24.3497, lon: 121.4428, logs: [] },
+          { id: 'b029', name: '東郡大山', type: 'baiyue', elevation: 3619, location: '南投縣', lat: 23.5794, lon: 121.0772, logs: [] },
+          { id: 'b030', name: '無明山', type: 'baiyue', elevation: 3451, location: '台中市/花蓮縣', lat: 24.2300, lon: 121.3667, logs: [] },
+          { id: 'b031', name: '巴巴山', type: 'baiyue', elevation: 3449, location: '台中市/花蓮縣', lat: 24.3517, lon: 121.4475, logs: [] },
+          { id: 'b032', name: '馬西山', type: 'baiyue', elevation: 3443, location: '花蓮縣', lat: 23.3361, lon: 121.1347, logs: [] },
+          { id: 'b033', name: '北合歡山', type: 'baiyue', elevation: 3422, location: '南投縣/花蓮縣', lat: 24.1817, lon: 121.2825, logs: [] },
+          { id: 'b034', name: '合歡山東峰', type: 'baiyue', elevation: 3421, location: '南投縣/花蓮縣', lat: 24.1361, lon: 121.2814, logs: [] },
+          { id: 'b035', name: '小霸尖山', type: 'baiyue', elevation: 3418, location: '苗栗縣', lat: 24.4642, lon: 121.2464, logs: [] },
+          { id: 'b036', name: '合歡山主峰', type: 'baiyue', elevation: 3417, location: '南投縣/花蓮縣', lat: 24.1417, lon: 121.2750, logs: [] },
+          { id: 'b037', name: '南玉山', type: 'baiyue', elevation: 3383, location: '高雄市', lat: 23.4350, lon: 120.9422, logs: [] },
+          { id: 'b038', name: '畢祿山', type: 'baiyue', elevation: 3371, location: '南投縣/花蓮縣', lat: 24.2217, lon: 121.3458, logs: [] },
+          { id: 'b039', name: '卓社大山', type: 'baiyue', elevation: 3369, location: '南投縣', lat: 23.8344, lon: 121.0825, logs: [] },
+          { id: 'b040', name: '奇萊南峰', type: 'baiyue', elevation: 3358, location: '南投縣', lat: 24.0483, lon: 121.2825, logs: [] },
+          { id: 'b041', name: '南雙頭山', type: 'baiyue', elevation: 3356, location: '高雄市/花蓮縣', lat: 23.4078, lon: 121.0375, logs: [] },
+          { id: 'b042', name: '能高南峰', type: 'baiyue', elevation: 3349, location: '南投縣/花蓮縣', lat: 23.9744, lon: 121.2725, logs: [] },
+          { id: 'b043', name: '志佳陽大山', type: 'baiyue', elevation: 3345, location: '台中市', lat: 24.3439, lon: 121.2433, logs: [] },
+          { id: 'b044', name: '白姑大山', type: 'baiyue', elevation: 3341, location: '南投縣/台中市', lat: 24.1953, lon: 121.1111, logs: [] },
+          { id: 'b045', name: '八通關山', type: 'baiyue', elevation: 3335, location: '南投縣', lat: 23.4908, lon: 121.0117, logs: [] },
+          { id: 'b046', name: '新康山', type: 'baiyue', elevation: 3331, location: '花蓮縣/台東縣', lat: 23.3242, lon: 121.1717, logs: [] },
+          { id: 'b047', name: '桃山', type: 'baiyue', elevation: 3325, location: '新竹縣/台中市', lat: 24.4289, lon: 121.2981, logs: [] },
+          { id: 'b048', name: '佳陽山', type: 'baiyue', elevation: 3314, location: '台中市', lat: 24.3200, lon: 121.1858, logs: [] },
+          { id: 'b049', name: '火石山', type: 'baiyue', elevation: 3310, location: '苗栗縣/台中市', lat: 24.3528, lon: 121.1469, logs: [] },
+          { id: 'b050', name: '池有山', type: 'baiyue', elevation: 3303, location: '新竹縣/台中市', lat: 24.4264, lon: 121.2847, logs: [] },
+          { id: 'b051', name: '伊澤山', type: 'baiyue', elevation: 3297, location: '新竹縣/苗栗縣', lat: 24.4719, lon: 121.2403, logs: [] },
+          { id: 'b052', name: '卑南主山', type: 'baiyue', elevation: 3295, location: '高雄市/台東縣', lat: 23.0800, lon: 120.8753, logs: [] },
+          { id: 'b053', name: '太汝山', type: 'baiyue', elevation: 3295, location: '高雄市', lat: 23.4072, lon: 120.9575, logs: [] },
+          { id: 'b054', name: '干卓萬山', type: 'baiyue', elevation: 3284, location: '南投縣', lat: 23.8767, lon: 121.0858, logs: [] },
+          { id: 'b055', name: '太魯閣大山', type: 'baiyue', elevation: 3283, location: '花蓮縣', lat: 24.0847, lon: 121.3931, logs: [] },
+          { id: 'b056', name: '轆轆山', type: 'baiyue', elevation: 3279, location: '高雄市/花蓮縣', lat: 23.3636, lon: 121.0372, logs: [] },
+          { id: 'b057', name: '喀西帕南山', type: 'baiyue', elevation: 3276, location: '花蓮縣', lat: 23.3442, lon: 121.1442, logs: [] },
+          { id: 'b058', name: '內嶺爾山', type: 'baiyue', elevation: 3275, location: '花蓮縣', lat: 23.3497, lon: 121.1022, logs: [] },
+          { id: 'b059', name: '鈴鳴山', type: 'baiyue', elevation: 3272, location: '台中市/花蓮縣', lat: 24.2628, lon: 121.3361, logs: [] },
+          { id: 'b060', name: '白石山', type: 'baiyue', elevation: 3110, location: '南投縣/花蓮縣', lat: 23.9039, lon: 121.2725, logs: [] },
+          { id: 'b061', name: '磐石山', type: 'baiyue', elevation: 3106, location: '花蓮縣', lat: 24.0722, lon: 121.3533, logs: [] },
+          { id: 'b062', name: '雪山東峰', type: 'baiyue', elevation: 3201, location: '台中市', lat: 24.3828, lon: 121.2581, logs: [] },
+          { id: 'b063', name: '塔關山', type: 'baiyue', elevation: 3222, location: '高雄市/台東縣', lat: 23.2722, lon: 120.9458, logs: [] },
+          { id: 'b064', name: '馬比杉山', type: 'baiyue', elevation: 3211, location: '花蓮縣/宜蘭縣', lat: 24.3589, lon: 121.4650, logs: [] },
+          { id: 'b065', name: '達芬尖山', type: 'baiyue', elevation: 3208, location: '南投縣/高雄市/花蓮縣', lat: 23.4561, lon: 121.0189, logs: [] },
+          { id: 'b066', name: '能高山', type: 'baiyue', elevation: 3262, location: '南投縣/花蓮縣', lat: 24.0150, lon: 121.2611, logs: [] },
+          { id: 'b067', name: '萬東山西峰(火山)', type: 'baiyue', elevation: 3258, location: '南投縣', lat: 23.8617, lon: 121.1217, logs: [] },
+          { id: 'b068', name: '小關山', type: 'baiyue', elevation: 3249, location: '高雄市/台東縣', lat: 23.2117, lon: 120.8925, logs: [] },
+          { id: 'b069', name: '義西請馬至山', type: 'baiyue', elevation: 3245, location: '南投縣/花蓮縣', lat: 23.5433, lon: 121.0872, logs: [] },
+          { id: 'b070', name: '牧山', type: 'baiyue', elevation: 3241, location: '南投縣', lat: 23.8656, lon: 121.1119, logs: [] },
+          { id: 'b071', name: '玉山前峰', type: 'baiyue', elevation: 3239, location: '南投縣/嘉義縣', lat: 23.4839, lon: 120.9233, logs: [] },
+          { id: 'b072', name: '石門山', type: 'baiyue', elevation: 3237, location: '南投縣/花蓮縣', lat: 24.1539, lon: 121.2842, logs: [] },
+          { id: 'b073', name: '無雙山', type: 'baiyue', elevation: 3185, location: '南投縣', lat: 23.6306, lon: 121.0453, logs: [] },
+          { id: 'b074', name: '塔芬山', type: 'baiyue', elevation: 3090, location: '高雄市/花蓮縣', lat: 23.4208, lon: 121.0336, logs: [] },
+          { id: 'b075', name: '立霧主山', type: 'baiyue', elevation: 3070, location: '花蓮縣', lat: 24.0994, lon: 121.3789, logs: [] },
+          { id: 'b076', name: '安東軍山', type: 'baiyue', elevation: 3068, location: '南投縣/花蓮縣', lat: 23.8778, lon: 121.2664, logs: [] },
+          { id: 'b077', name: '光頭山', type: 'baiyue', elevation: 3060, location: '南投縣/花蓮縣', lat: 23.9214, lon: 121.2625, logs: [] },
+          { id: 'b078', name: '羊頭山', type: 'baiyue', elevation: 3035, location: '花蓮縣', lat: 24.2150, lon: 121.3719, logs: [] },
+          { id: 'b079', name: '布拉克桑山', type: 'baiyue', elevation: 3025, location: '花蓮縣/台東縣', lat: 23.2386, lon: 121.1092, logs: [] },
+          { id: 'b080', name: '駒盆山', type: 'baiyue', elevation: 3022, location: '南投縣', lat: 23.5350, lon: 121.0306, logs: [] },
+          { id: 'b081', name: '六順山', type: 'baiyue', elevation: 2999, location: '南投縣/花蓮縣', lat: 23.7558, lon: 121.2344, logs: [] },
+          { id: 'b082', name: '關山嶺山', type: 'baiyue', elevation: 3176, location: '高雄市/台東縣', lat: 23.2764, lon: 120.9575, logs: [] },
+          { id: 'b083', name: '海諾南山', type: 'baiyue', elevation: 3175, location: '高雄市/台東縣', lat: 23.2450, lon: 120.9161, logs: [] },
+          { id: 'b084', name: '中雪山', type: 'baiyue', elevation: 3173, location: '苗栗縣', lat: 24.3436, lon: 121.1044, logs: [] },
+          { id: 'b085', name: '閂山', type: 'baiyue', elevation: 3168, location: '台中市/花蓮縣', lat: 24.2300, lon: 121.3258, logs: [] },
+          { id: 'b086', name: '甘藷峰', type: 'baiyue', elevation: 3158, location: '台中市/花蓮縣', lat: 24.2886, lon: 121.3969, logs: [] },
+          { id: 'b087', name: '西合歡山', type: 'baiyue', elevation: 3145, location: '南投縣', lat: 24.1508, lon: 121.2650, logs: [] },
+          { id: 'b088', name: '審馬陣山', type: 'baiyue', elevation: 3141, location: '台中市/宜蘭縣', lat: 24.3833, lon: 121.4258, logs: [] },
+          { id: 'b089', name: '庫哈諾辛山', type: 'baiyue', elevation: 3115, location: '高雄市', lat: 23.2925, lon: 120.9069, logs: [] },
+          { id: 'b090', name: '加利山', type: 'baiyue', elevation: 3112, location: '苗栗縣', lat: 24.4600, lon: 121.2333, logs: [] },
+          { id: 'b091', name: '帕托魯山', type: 'baiyue', elevation: 3101, location: '花蓮縣', lat: 24.0997, lon: 121.4336, logs: [] },
+          { id: 'b092', name: '北大武山', type: 'baiyue', elevation: 3092, location: '屏東縣', lat: 22.6283, lon: 120.7617, logs: [] },
+          { id: 'b093', name: '西巒大山', type: 'baiyue', elevation: 3081, location: '南投縣', lat: 23.6872, lon: 120.9425, logs: [] },
+          { id: 'b094', name: '塔芬山', type: 'baiyue', elevation: 3070, location: '高雄市/花蓮縣', lat: 23.4208, lon: 121.0336, logs: [] },
+          { id: 'b095', name: '立霧主山', type: 'baiyue', elevation: 3070, location: '花蓮縣', lat: 24.0994, lon: 121.3789, logs: [] },
+          { id: 'b096', name: '安東軍山', type: 'baiyue', elevation: 3068, location: '南投縣/花蓮縣', lat: 23.8778, lon: 121.2664, logs: [] },
+          { id: 'b097', name: '光頭山', type: 'baiyue', elevation: 3060, location: '南投縣/花蓮縣', lat: 23.9214, lon: 121.2625, logs: [] },
+          { id: 'b098', name: '羊頭山', type: 'baiyue', elevation: 3035, location: '花蓮縣', lat: 24.2150, lon: 121.3719, logs: [] },
+          { id: 'b099', name: '布拉克桑山', type: 'baiyue', elevation: 3025, location: '花蓮縣/台東縣', lat: 23.2386, lon: 121.1092, logs: [] },
+          { id: 'b100', name: '鹿山', type: 'baiyue', elevation: 2981, location: '高雄市', lat: 23.4475, lon: 120.9789, logs: [] },
+
+          // === 小百岳 (100座) ===
+          { id: 'x001', name: '大屯山', type: 'xiaobaiyue', elevation: 1092, location: '台北市', lat: 25.1762, lon: 121.5218, logs: [] },
+          { id: 'x002', name: '七星山', type: 'xiaobaiyue', elevation: 1120, location: '台北市', lat: 25.1705, lon: 121.5543, logs: [] },
+          { id: 'x003', name: '大武崙山', type: 'xiaobaiyue', elevation: 231, location: '基隆市', lat: 25.1566, lon: 121.7088, logs: [] },
+          { id: 'x004', name: '槓子寮山', type: 'xiaobaiyue', elevation: 163, location: '基隆市', lat: 25.1430, lon: 121.7802, logs: [] },
+          { id: 'x005', name: '觀音山', type: 'xiaobaiyue', elevation: 616, location: '新北市', lat: 25.1384, lon: 121.4222, logs: [] },
+          { id: 'x006', name: '基隆山', type: 'xiaobaiyue', elevation: 588, location: '新北市', lat: 25.1186, lon: 121.8497, logs: [] },
+          { id: 'x007', name: '紅淡山', type: 'xiaobaiyue', elevation: 210, location: '基隆市', lat: 25.1166, lon: 121.7616, logs: [] },
+          { id: 'x008', name: '大崙頭山', type: 'xiaobaiyue', elevation: 476, location: '台北市', lat: 25.1105, lon: 121.5833, logs: [] },
+          { id: 'x009', name: '劍潭山', type: 'xiaobaiyue', elevation: 153, location: '台北市', lat: 25.0844, lon: 121.5305, logs: [] },
+          { id: 'x010', name: '五分山', type: 'xiaobaiyue', elevation: 757, location: '新北市', lat: 25.0719, lon: 121.7825, logs: [] },
+          { id: 'x011', name: '姜子寮山', type: 'xiaobaiyue', elevation: 729, location: '基隆市/新北市', lat: 25.0683, lon: 121.7230, logs: [] },
+          { id: 'x012', name: '汐止大尖山', type: 'xiaobaiyue', elevation: 460, location: '新北市', lat: 25.0538, lon: 121.6700, logs: [] },
+          { id: 'x013', name: '南港山', type: 'xiaobaiyue', elevation: 375, location: '台北市', lat: 25.0255, lon: 121.5841, logs: [] },
+          { id: 'x014', name: '土庫岳', type: 'xiaobaiyue', elevation: 389, location: '新北市/台北市', lat: 25.0227, lon: 121.6366, logs: [] },
+          { id: 'x015', name: '大棟山', type: 'xiaobaiyue', elevation: 405, location: '新北市/桃園市', lat: 24.9858, lon: 121.3861, logs: [] },
+          { id: 'x016', name: '南勢角山', type: 'xiaobaiyue', elevation: 302, location: '新北市', lat: 24.9752, lon: 121.5036, logs: [] },
+          { id: 'x017', name: '二格山', type: 'xiaobaiyue', elevation: 678, location: '新北市/台北市', lat: 24.9669, lon: 121.6169, logs: [] },
+          { id: 'x018', name: '天上山', type: 'xiaobaiyue', elevation: 430, location: '新北市', lat: 24.9519, lon: 121.4655, logs: [] },
+          { id: 'x019', name: '福德坑山(鳶山)', type: 'xiaobaiyue', elevation: 321, location: '新北市', lat: 24.9297, lon: 121.3411, logs: [] },
+          { id: 'x020', name: '獅仔頭山', type: 'xiaobaiyue', elevation: 858, location: '新北市', lat: 24.9102, lon: 121.5161, logs: [] },
+          { id: 'x021', name: '金面山', type: 'xiaobaiyue', elevation: 667, location: '桃園市', lat: 24.8950, lon: 121.2880, logs: [] },
+          { id: 'x022', name: '東眼山', type: 'xiaobaiyue', elevation: 1212, location: '桃園市', lat: 24.8269, lon: 121.4116, logs: [] },
+          { id: 'x023', name: '溪洲山', type: 'xiaobaiyue', elevation: 577, location: '桃園市', lat: 24.8080, lon: 121.2727, logs: [] },
+          { id: 'x024', name: '石門山', type: 'xiaobaiyue', elevation: 551, location: '桃園市', lat: 24.8105, lon: 121.2388, logs: [] },
+          { id: 'x025', name: '石牛山', type: 'xiaobaiyue', elevation: 671, location: '新竹縣', lat: 24.7863, lon: 121.2588, logs: [] },
+          { id: 'x026', name: '獅頭山', type: 'xiaobaiyue', elevation: 492, location: '苗栗縣/新竹縣', lat: 24.6469, lon: 121.0100, logs: [] },
+          { id: 'x027', name: '五指山', type: 'xiaobaiyue', elevation: 1062, location: '新竹縣', lat: 24.6366, lon: 121.1066, logs: [] },
+          { id: 'x028', name: '向天湖山', type: 'xiaobaiyue', elevation: 1225, location: '苗栗縣', lat: 24.5822, lon: 121.0372, logs: [] },
+          { id: 'x029', name: '鵝公髻山', type: 'xiaobaiyue', elevation: 1579, location: '苗栗縣/新竹縣', lat: 24.6130, lon: 121.0805, logs: [] },
+          { id: 'x030', name: '仙山', type: 'xiaobaiyue', elevation: 967, location: '苗栗縣', lat: 24.5505, lon: 120.9497, logs: [] },
+          { id: 'x031', name: '加里山', type: 'xiaobaiyue', elevation: 2220, location: '苗栗縣', lat: 24.5056, lon: 121.0333, logs: [] },
+          { id: 'x032', name: '馬拉邦山', type: 'xiaobaiyue', elevation: 1406, location: '苗栗縣', lat: 24.3688, lon: 120.9161, logs: [] },
+          { id: 'x033', name: '火炎山', type: 'xiaobaiyue', elevation: 602, location: '苗栗縣', lat: 24.3644, lon: 120.7300, logs: [] },
+          { id: 'x034', name: '關刀山', type: 'xiaobaiyue', elevation: 889, location: '苗栗縣', lat: 24.3852, lon: 120.7938, logs: [] },
+          { id: 'x035', name: '鐵砧山', type: 'xiaobaiyue', elevation: 236, location: '台中市', lat: 24.3547, lon: 120.6658, logs: [] },
+          { id: 'x036', name: '稍來山', type: 'xiaobaiyue', elevation: 2307, location: '台中市', lat: 24.2288, lon: 120.9850, logs: [] },
+          { id: 'x037', name: '鳶嘴山', type: 'xiaobaiyue', elevation: 2180, location: '台中市', lat: 24.2386, lon: 120.9575, logs: [] },
+          { id: 'x038', name: '三汀山', type: 'xiaobaiyue', elevation: 480, location: '台中市', lat: 24.1505, lon: 120.7583, logs: [] },
+          { id: 'x039', name: '暗影山', type: 'xiaobaiyue', elevation: 997, location: '台中市', lat: 24.1458, lon: 120.8241, logs: [] },
+          { id: 'x040', name: '聚興山', type: 'xiaobaiyue', elevation: 500, location: '台中市', lat: 24.2058, lon: 120.7327, logs: [] },
+          { id: 'x041', name: '頭嵙山', type: 'xiaobaiyue', elevation: 859, location: '台中市', lat: 24.1816, lon: 120.7482, logs: [] },
+          { id: 'x042', name: '南觀音山', type: 'xiaobaiyue', elevation: 318, location: '台中市', lat: 24.1613, lon: 120.7352, logs: [] },
+          { id: 'x043', name: '阿罩霧山', type: 'xiaobaiyue', elevation: 249, location: '台中市', lat: 24.0538, lon: 120.7138, logs: [] },
+          { id: 'x044', name: '九份二山', type: 'xiaobaiyue', elevation: 1174, location: '南投縣', lat: 23.9577, lon: 120.8497, logs: [] },
+          { id: 'x045', name: '集集大山', type: 'xiaobaiyue', elevation: 1392, location: '南投縣', lat: 23.8647, lon: 120.8258, logs: [] },
+          { id: 'x046', name: '鳳凰山', type: 'xiaobaiyue', elevation: 1698, location: '南投縣', lat: 23.7058, lon: 120.8033, logs: [] },
+          { id: 'x047', name: '金柑樹山', type: 'xiaobaiyue', elevation: 2091, location: '南投縣', lat: 23.6402, lon: 120.7872, logs: [] },
+          { id: 'x048', name: '松柏坑山', type: 'xiaobaiyue', elevation: 430, location: '彰化縣/南投縣', lat: 23.8341, lon: 120.6300, logs: [] },
+          { id: 'x049', name: '橫山', type: 'xiaobaiyue', elevation: 443, location: '彰化縣/南投縣', lat: 23.8794, lon: 120.6186, logs: [] },
+          { id: 'x050', name: '大雲山(雲嘉大尖山)', type: 'xiaobaiyue', elevation: 1305, location: '雲林縣/嘉義縣', lat: 23.5855, lon: 120.6272, logs: [] },
+          { id: 'x051', name: '梨子腳山', type: 'xiaobaiyue', elevation: 1176, location: '嘉義縣', lat: 23.5702, lon: 120.6258, logs: [] },
+          { id: 'x052', name: '獨立山', type: 'xiaobaiyue', elevation: 840, location: '嘉義縣', lat: 23.5417, lon: 120.6139, logs: [] },
+          { id: 'x053', name: '大塔山', type: 'xiaobaiyue', elevation: 2663, location: '嘉義縣', lat: 23.5222, lon: 120.8111, logs: [] },
+          { id: 'x054', name: '大湖尖山', type: 'xiaobaiyue', elevation: 1313, location: '嘉義縣', lat: 23.4797, lon: 120.6380, logs: [] },
+          { id: 'x055', name: '九芎林山', type: 'xiaobaiyue', elevation: 450, location: '嘉義縣', lat: 23.4502, lon: 120.5736, logs: [] },
+          { id: 'x056', name: '白河大棟山', type: 'xiaobaiyue', elevation: 1241, location: '台南市', lat: 23.3130, lon: 120.5050, logs: [] },
+          { id: 'x057', name: '崁頭山', type: 'xiaobaiyue', elevation: 844, location: '台南市', lat: 23.2591, lon: 120.5061, logs: [] },
+          { id: 'x058', name: '竹子尖山', type: 'xiaobaiyue', elevation: 1110, location: '台南市', lat: 23.1894, lon: 120.5369, logs: [] },
+          { id: 'x059', name: '大崗山', type: 'xiaobaiyue', elevation: 312, location: '高雄市', lat: 22.8633, lon: 120.3347, logs: [] },
+          { id: 'x060', name: '觀音山', type: 'xiaobaiyue', elevation: 177, location: '高雄市', lat: 22.7230, lon: 120.3705, logs: [] },
+          { id: 'x061', name: '旗尾山', type: 'xiaobaiyue', elevation: 318, location: '高雄市', lat: 22.8950, lon: 120.4900, logs: [] },
+          { id: 'x062', name: '鳴海山', type: 'xiaobaiyue', elevation: 1411, location: '高雄市', lat: 22.9238, lon: 120.6722, logs: [] },
+          { id: 'x063', name: '大社觀音山', type: 'xiaobaiyue', elevation: 177, location: '高雄市', lat: 22.7227, lon: 120.3705, logs: [] },
+          { id: 'x064', name: '壽山', type: 'xiaobaiyue', elevation: 356, location: '高雄市', lat: 22.6515, lon: 120.2635, logs: [] },
+          { id: 'x065', name: '笠頂山', type: 'xiaobaiyue', elevation: 659, location: '屏東縣', lat: 22.6288, lon: 120.6436, logs: [] },
+          { id: 'x066', name: '棚集山', type: 'xiaobaiyue', elevation: 899, location: '屏東縣', lat: 22.5622, lon: 120.6558, logs: [] },
+          { id: 'x067', name: '女仍山', type: 'xiaobaiyue', elevation: 804, location: '屏東縣', lat: 22.2155, lon: 120.8197, logs: [] },
+          { id: 'x068', name: '里龍山', type: 'xiaobaiyue', elevation: 1062, location: '屏東縣', lat: 22.1647, lon: 120.7628, logs: [] },
+          { id: 'x069', name: '大山母山', type: 'xiaobaiyue', elevation: 325, location: '屏東縣', lat: 21.9675, lon: 120.7633, logs: [] },
+          { id: 'x070', name: '蘭嶼紅頭山', type: 'xiaobaiyue', elevation: 552, location: '台東縣', lat: 22.0397, lon: 121.5547, logs: [] },
+          { id: 'x071', name: '太麻里山', type: 'xiaobaiyue', elevation: 1340, location: '台東縣', lat: 22.6394, lon: 120.9633, logs: [] },
+          { id: 'x072', name: '加奈美山', type: 'xiaobaiyue', elevation: 872, location: '台東縣', lat: 22.4286, lon: 120.9327, logs: [] },
+          { id: 'x073', name: '都蘭山', type: 'xiaobaiyue', elevation: 1190, location: '台東縣', lat: 22.8803, lon: 121.1761, logs: [] },
+          { id: 'x074', name: '八里灣山', type: 'xiaobaiyue', elevation: 924, location: '花蓮縣', lat: 23.5419, lon: 121.5175, logs: [] },
+          { id: 'x075', name: '萬人山', type: 'xiaobaiyue', elevation: 886, location: '花蓮縣', lat: 23.3275, lon: 121.3050, logs: [] },
+          { id: 'x076', name: '鯉魚山', type: 'xiaobaiyue', elevation: 601, location: '花蓮縣', lat: 23.9261, lon: 121.5133, logs: [] },
+          { id: 'x077', name: '月眉山', type: 'xiaobaiyue', elevation: 614, location: '花蓮縣', lat: 23.8394, lon: 121.5594, logs: [] },
+          { id: 'x078', name: '初音山', type: 'xiaobaiyue', elevation: 905, location: '花蓮縣', lat: 23.9669, lon: 121.4938, logs: [] },
+          { id: 'x079', name: '卡拉寶山', type: 'xiaobaiyue', elevation: 2397, location: '花蓮縣', lat: 24.1866, lon: 121.3650, logs: [] },
+          { id: 'x080', name: '立霧山', type: 'xiaobaiyue', elevation: 1274, location: '花蓮縣', lat: 24.2005, lon: 121.6116, logs: [] },
+          { id: 'x081', name: '三星山', type: 'xiaobaiyue', elevation: 2352, location: '宜蘭縣', lat: 24.4927, lon: 121.5422, logs: [] },
+          { id: 'x082', name: '鵲子山', type: 'xiaobaiyue', elevation: 679, location: '宜蘭縣', lat: 24.8452, lon: 121.7580, logs: [] },
+          { id: 'x083', name: '三角崙山', type: 'xiaobaiyue', elevation: 1029, location: '新北市/宜蘭縣', lat: 24.8730, lon: 121.7377, logs: [] },
+          { id: 'x084', name: '灣坑頭山', type: 'xiaobaiyue', elevation: 616, location: '宜蘭縣', lat: 24.9663, lon: 121.9050, logs: [] },
+          { id: 'x085', name: '蛇頭山', type: 'xiaobaiyue', elevation: 20, location: '澎湖縣', lat: 23.5436, lon: 119.5516, logs: [] },
+          { id: 'x086', name: '太武山', type: 'xiaobaiyue', elevation: 253, location: '金門縣', lat: 24.4608, lon: 118.4116, logs: [] },
+          { id: 'x087', name: '雲台山', type: 'xiaobaiyue', elevation: 248, location: '連江縣', lat: 26.1511, lon: 119.9222, logs: [] },
+          { id: 'x088', name: '大崙山', type: 'xiaobaiyue', elevation: 494, location: '苗栗縣', lat: 24.4263, lon: 120.8669, logs: [] },
+          { id: 'x089', name: '三腳南山', type: 'xiaobaiyue', elevation: 1187, location: '嘉義縣/台南市', lat: 23.2386, lon: 120.5738, logs: [] },
+          { id: 'x090', name: '大横屏山', type: 'xiaobaiyue', elevation: 1206, location: '台中市/南投縣', lat: 24.0627, lon: 120.8286, logs: [] },
+          { id: 'x091', name: '大棟山', type: 'xiaobaiyue', elevation: 405, location: '桃園市/新北市', lat: 24.9858, lon: 121.3861, logs: [] },
+          { id: 'x092', name: '南山', type: 'xiaobaiyue', elevation: 1200, location: '桃園市', lat: 24.7892, lon: 121.3783, logs: [] },
+          { id: 'x093', name: '石牛山', type: 'xiaobaiyue', elevation: 671, location: '新竹縣', lat: 24.7863, lon: 121.2588, logs: [] },
+          { id: 'x094', name: '飛鳳山', type: 'xiaobaiyue', elevation: 423, location: '新竹縣', lat: 24.7661, lon: 121.1077, logs: [] },
+          { id: 'x095', name: '李棟山', type: 'xiaobaiyue', elevation: 1914, location: '新竹縣/桃園市', lat: 24.6933, lon: 121.3061, logs: [] },
+          { id: 'x096', name: '石壁山', type: 'xiaobaiyue', elevation: 1751, location: '雲林縣', lat: 23.6069, lon: 120.7100, logs: [] },
+          { id: 'x097', name: '大尖山', type: 'xiaobaiyue', elevation: 318, location: '屏東縣', lat: 21.9472, lon: 120.7933, logs: [] },
+          { id: 'x098', name: '大武山', type: 'xiaobaiyue', elevation: 3092, location: '屏東縣', lat: 22.6283, lon: 120.7617, logs: [] },
+          { id: 'x099', name: '尾寮山', type: 'xiaobaiyue', elevation: 1427, location: '屏東縣', lat: 22.8633, lon: 120.6433, logs: [] },
+          { id: 'x100', name: '笠山', type: 'xiaobaiyue', elevation: 659, location: '屏東縣', lat: 22.6288, lon: 120.6436, logs: [] },
+        ];
+
+        const { useState, useEffect, useMemo } = React;
+        
+        // 預設的地圖邊界 (校正用)
+        const DEFAULT_MAP_BOUNDS = {
+          minLon: 118.0,
+          maxLon: 123.0,
+          minLat: 21.5,
+          maxLat: 26.0,
+        };
+
+        function App() {
+            // --- 狀態管理 ---
+            const [peaks, setPeaks] = useState(() => {
+                const saved = localStorage.getItem('peak_tracker_data_v4');
+                // 如果沒有存檔，或存檔資料過少，則使用新的完整資料庫
+                if (!saved) return INITIAL_PEAKS;
+                try {
+                    const savedPeaks = JSON.parse(saved);
+                    // 簡單檢查：如果存檔數量過少，使用新資料
+                    if (savedPeaks.length < 50) return INITIAL_PEAKS;
+                    return savedPeaks;
+                } catch (e) {
+                    return INITIAL_PEAKS;
+                }
+            });
+
+            // 地圖校正參數
+            const [mapBounds, setMapBounds] = useState(() => {
+                const saved = localStorage.getItem('peak_tracker_map_bounds');
+                return saved ? JSON.parse(saved) : DEFAULT_MAP_BOUNDS;
+            });
+
+            const [selectedPeak, setSelectedPeak] = useState(null);
+            const [activeTab, setActiveTab] = useState('map'); 
+            const [newDate, setNewDate] = useState('');
+            const [filterLocation, setFilterLocation] = useState('all');
+            const [searchTerm, setSearchTerm] = useState('');
+            const [isAddingPeak, setIsAddingPeak] = useState(false);
+            const [newPeakData, setNewPeakData] = useState({ name: '', elevation: '', location: '', lat: '', lon: '' });
+            const [isCalibrating, setIsCalibrating] = useState(false);
+
+            useEffect(() => {
+                localStorage.setItem('peak_tracker_data_v4', JSON.stringify(peaks));
+            }, [peaks]);
+
+            useEffect(() => {
+                localStorage.setItem('peak_tracker_map_bounds', JSON.stringify(mapBounds));
+            }, [mapBounds]);
+
+            // --- 計算統計與篩選 ---
+            const stats = useMemo(() => {
+                const getStats = (type) => {
+                    const total = peaks.filter(p => p.type === type).length;
+                    const done = peaks.filter(p => p.type === type && p.logs.length > 0).length;
+                    return { total, done, percent: total === 0 ? 0 : Math.round((done / total) * 100) };
+                };
+                return {
+                    baiyue: getStats('baiyue'),
+                    xiaobaiyue: getStats('xiaobaiyue'),
+                    suburban: getStats('suburban')
+                };
+            }, [peaks]);
+
+            const uniqueLocations = useMemo(() => {
+                const locs = new Set();
+                peaks.forEach(p => {
+                    if(p.location) p.location.split('/').forEach(l => locs.add(l.trim()));
+                });
+                return Array.from(locs).sort();
+            }, [peaks]);
+
+            // --- 地圖投影邏輯 (動態校正) ---
+            const getCoordinates = (lat, lon) => {
+                const { minLon, maxLon, minLat, maxLat } = mapBounds;
+                const width = 100; // %
+                const height = 100; // %
+                
+                // 經度轉 X (%)
+                const x = ((lon - minLon) / (maxLon - minLon)) * width;
+                // 緯度轉 Y (%) - SVG/DOM 座標系 Y 軸向下增加，故反轉
+                const y = 100 - ((lat - minLat) / (maxLat - minLat)) * height;
+                
+                return { x, y };
+            };
+
+            // --- 資料操作 ---
+            const addLog = (peakId, date) => {
+                if (!date) return;
+                setPeaks(prev => prev.map(p => {
+                    if (p.id === peakId) {
+                        return { ...p, logs: [...p.logs, date].sort() };
+                    }
+                    return p;
+                }));
+                setNewDate('');
+            };
+
+            const removeLog = (peakId, logIndex) => {
+                setPeaks(prev => prev.map(p => {
+                    if (p.id === peakId) {
+                        const newLogs = [...p.logs];
+                        newLogs.splice(logIndex, 1);
+                        return { ...p, logs: newLogs };
+                    }
+                    return p;
+                }));
+            };
+
+            const deletePeak = (peakId) => {
+                if (confirm('確定要刪除這座山岳資料嗎？')) {
+                    setPeaks(prev => prev.filter(p => p.id !== peakId));
+                    setSelectedPeak(null);
+                }
+            };
+
+            const handleCreatePeak = () => {
+                if (!newPeakData.name || !newPeakData.location) {
+                    alert('請填寫山名與縣市');
+                    return;
+                }
+                const id = 's' + Date.now().toString().slice(-6); // 簡易 ID 生成
+                const newPeak = {
+                    id,
+                    name: newPeakData.name,
+                    type: 'suburban',
+                    elevation: newPeakData.elevation || 0,
+                    location: newPeakData.location,
+                    lat: parseFloat(newPeakData.lat) || 0,
+                    lon: parseFloat(newPeakData.lon) || 0,
+                    logs: []
+                };
+                setPeaks(prev => [...prev, newPeak]);
+                setIsAddingPeak(false);
+                setNewPeakData({ name: '', elevation: '', location: '', lat: '', lon: '' });
+                // 自動切換到郊山分頁
+                setActiveTab('suburban');
+            };
+
+            const exportCSV = () => {
+                const headers = "ID,名稱,類型,海拔(m),縣市,緯度,經度,攻頂日期\n";
+                const rows = peaks.map(p => {
+                    const typeName = p.type === 'baiyue' ? '百岳' : p.type === 'xiaobaiyue' ? '小百岳' : '郊山';
+                    return `${p.id},${p.name},${typeName},${p.elevation},${p.location},${p.lat},${p.lon},"${p.logs.join(',')}"`;
+                }).join("\n");
+                const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `登山紀錄_v4_${new Date().toISOString().slice(0,10)}.csv`;
+                link.click();
+            };
+
+            const importCSV = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target.result;
+                    const lines = text.split('\n').slice(1);
+                    
+                    // 合併策略：ID相同更新，不同則新增
+                    let updatedPeaks = [...peaks];
+
+                    lines.forEach(line => {
+                        if (!line.trim()) return;
+                        const parts = line.split(',');
+                        // 簡單 CSV 解析 (假設無內嵌逗號)
+                        const id = parts[0];
+                        const name = parts[1];
+                        const typeRaw = parts[2];
+                        const elevation = parts[3];
+                        const location = parts[4];
+                        const lat = parts[5];
+                        const lon = parts[6];
+                        
+                        const logPartMatch = line.match(/"([^"]*)"$/);
+                        const logs = logPartMatch ? logPartMatch[1].split(',').filter(x=>x) : [];
+
+                        let type = 'suburban';
+                        if(typeRaw === '百岳') type = 'baiyue';
+                        if(typeRaw === '小百岳') type = 'xiaobaiyue';
+
+                        const existingIndex = updatedPeaks.findIndex(p => p.id === id);
+                        
+                        if (existingIndex >= 0) {
+                            // 更新既有
+                            updatedPeaks[existingIndex] = {
+                                ...updatedPeaks[existingIndex],
+                                logs: logs
+                            };
+                        } else {
+                            // 新增 (例如匯入備份的郊山)
+                            if(id && name) {
+                                updatedPeaks.push({
+                                    id, name, type, elevation, location, lat: parseFloat(lat)||0, lon: parseFloat(lon)||0, logs
+                                });
+                            }
+                        }
+                    });
+                    setPeaks(updatedPeaks);
+                    alert('資料匯入完成！');
+                };
+                reader.readAsText(file);
+            };
+
+            // --- Sub-Components ---
+            
+            const StatTab = ({ title, data, colorClass, barColor, isActive, onClick, icon: Icon }) => (
+                <div 
+                    onClick={onClick}
+                    className={`relative cursor-pointer p-2 sm:p-3 rounded-xl border transition-all duration-200 flex flex-col items-center justify-center text-center
+                        ${isActive 
+                            ? 'bg-white shadow-md border-emerald-500 ring-1 ring-emerald-500 transform scale-105 z-10' 
+                            : 'bg-slate-50 border-slate-200 hover:bg-white hover:shadow-sm'
+                        }`}
+                >
+                    <Icon size={18} className={`mb-1 ${isActive ? colorClass : 'text-slate-400'}`} />
+                    <div className="text-[10px] sm:text-xs text-slate-500 font-medium whitespace-nowrap">{title}</div>
+                    <div className={`text-lg sm:text-xl font-bold ${isActive ? colorClass : 'text-slate-600'}`}>
+                        {data ? `${data.percent}%` : '--'}
+                    </div>
+                    {data && (
+                        <div className="w-full bg-slate-200 h-1 rounded-full mt-1 sm:mt-2 overflow-hidden">
+                            <div className={`h-full ${barColor}`} style={{ width: `${data.percent}%` }}></div>
+                        </div>
+                    )}
+                </div>
+            );
+
+            const PeakTable = ({ type }) => {
+                const filteredPeaks = peaks.filter(p => {
+                    const matchType = p.type === type;
+                    const matchLoc = filterLocation === 'all' || p.location.includes(filterLocation);
+                    const matchSearch = p.name.includes(searchTerm) || p.location.includes(searchTerm);
+                    return matchType && matchLoc && matchSearch;
+                });
+                
+                return (
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[400px]">
+                        {/* 頂部控制列 */}
+                        <div className="p-3 border-b border-slate-100 flex flex-col gap-3">
+                            <div className="flex justify-between items-center gap-2">
+                                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar flex-1">
+                                    <Filter size={14} className="text-slate-400 flex-shrink-0" />
+                                    <select 
+                                        value={filterLocation}
+                                        onChange={(e) => setFilterLocation(e.target.value)}
+                                        className="text-xs bg-slate-100 border-none rounded-full px-3 py-1 text-slate-600 outline-none cursor-pointer hover:bg-slate-200"
+                                    >
+                                        <option value="all">全地區</option>
+                                        {uniqueLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                                    </select>
+                                </div>
+                                {type === 'suburban' && (
+                                    <button 
+                                        onClick={() => setIsAddingPeak(true)}
+                                        className="flex items-center gap-1 bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors shadow-sm"
+                                    >
+                                        <Plus size={14} /> 新增
+                                    </button>
+                                )}
+                            </div>
+                            {/* 搜尋欄 */}
+                            <div className="relative">
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input 
+                                    type="text" 
+                                    placeholder="搜尋山名或地點..." 
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-emerald-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                                    <tr>
+                                        <th className="p-4 w-12 text-center">狀態</th>
+                                        <th className="p-4">山名 / 資訊</th>
+                                        <th className="p-4 hidden sm:table-cell">最新攻頂</th>
+                                        <th className="p-4 text-right">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {filteredPeaks.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="4" className="p-8 text-center text-slate-400 text-xs">
+                                                沒有符合的資料<br/>{type === 'suburban' && '點擊「新增」來加入第一座郊山！'}
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredPeaks.map(peak => (
+                                            <tr key={peak.id} className="hover:bg-slate-50/80 transition-colors">
+                                                <td className="p-4 text-center">
+                                                    {peak.logs.length > 0 ? (
+                                                        <CheckCircle2 className="text-emerald-500 fill-emerald-50 mx-auto" size={20} />
+                                                    ) : (
+                                                        <div className="w-5 h-5 rounded-full border-2 border-slate-200 mx-auto"></div>
+                                                    )}
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="font-bold text-slate-800 text-base">{peak.name}</div>
+                                                    <div className="flex flex-wrap gap-2 mt-1 text-xs text-slate-500">
+                                                        <span className="flex items-center gap-0.5"><MapPin size={10} /> {peak.location}</span>
+                                                        <span className="bg-slate-100 px-1.5 rounded text-slate-600">{peak.elevation}m</span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-4 hidden sm:table-cell">
+                                                    {peak.logs.length > 0 ? (
+                                                        <span className="px-2 py-0.5 rounded text-xs bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                                            {peak.logs[peak.logs.length - 1]}
+                                                        </span>
+                                                    ) : <span className="text-slate-300 text-xs">--</span>}
+                                                </td>
+                                                <td className="p-4 text-right">
+                                                    <button onClick={() => setSelectedPeak(peak)} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded text-xs font-medium transition-colors">
+                                                        紀錄
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen bg-slate-100 font-sans text-slate-800 pb-20">
+                    <header className="bg-slate-900 text-white shadow-lg sticky top-0 z-40">
+                        <div className="max-w-md mx-auto px-4 h-14 flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <Mountain size={20} className="text-emerald-400" />
+                                <h1 className="text-base font-bold tracking-wide">台灣山岳紀錄</h1>
+                            </div>
+                            <div className="flex gap-3 text-slate-400">
+                                <button onClick={exportCSV} title="匯出 CSV"><Download size={18} className="hover:text-white transition-colors" /></button>
+                                <label className="cursor-pointer" title="匯入 CSV">
+                                    <Upload size={18} className="hover:text-white transition-colors" />
+                                    <input type="file" accept=".csv" onChange={importCSV} className="hidden" />
+                                </label>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="max-w-md mx-auto p-4 space-y-4">
+                        
+                        {/* 分頁切換 */}
+                        <div className="grid grid-cols-4 gap-2">
+                            <StatTab 
+                                title="地圖模式" 
+                                data={null}
+                                colorClass="text-emerald-600"
+                                barColor="bg-emerald-500"
+                                isActive={activeTab === 'map'}
+                                onClick={() => setActiveTab('map')}
+                                icon={MapIcon}
+                            />
+                            <StatTab 
+                                title="百岳" 
+                                data={stats.baiyue} 
+                                colorClass="text-rose-600"
+                                barColor="bg-rose-500"
+                                isActive={activeTab === 'baiyue'}
+                                onClick={() => setActiveTab('baiyue')}
+                                icon={Mountain}
+                            />
+                            <StatTab 
+                                title="小百岳" 
+                                data={stats.xiaobaiyue} 
+                                colorClass="text-sky-600"
+                                barColor="bg-sky-500"
+                                isActive={activeTab === 'xiaobaiyue'}
+                                onClick={() => setActiveTab('xiaobaiyue')}
+                                icon={Trees}
+                            />
+                            <StatTab 
+                                title="郊山" 
+                                data={stats.suburban} 
+                                colorClass="text-amber-600"
+                                barColor="bg-amber-500"
+                                isActive={activeTab === 'suburban'}
+                                onClick={() => setActiveTab('suburban')}
+                                icon={MapPin}
+                            />
+                        </div>
+
+                        {/* --- 內容區域 --- */}
+                        
+                        {/* 地圖模式 */}
+                        {activeTab === 'map' && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 relative overflow-hidden flex flex-col items-center min-h-[500px]">
+                                
+                                {/* 地圖工具列 */}
+                                <div className="absolute top-4 left-4 z-20 flex flex-col gap-2">
+                                    <button 
+                                        onClick={() => setIsCalibrating(!isCalibrating)}
+                                        className={`p-2 rounded-lg shadow-sm border transition-colors ${isCalibrating ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-white text-slate-500 border-slate-200'}`}
+                                        title="校正地圖位置"
+                                    >
+                                        <Settings size={16} />
+                                    </button>
+                                </div>
+
+                                {/* 校正面板 */}
+                                {isCalibrating && (
+                                    <div className="absolute top-16 left-4 z-30 bg-white/95 p-4 rounded-xl shadow-xl border border-slate-200 w-64 backdrop-blur-sm animate-in slide-in-from-left-2">
+                                        <h3 className="text-xs font-bold mb-3 flex items-center gap-2">
+                                            <Settings size={12} /> 地圖校正模式
+                                        </h3>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label className="text-[10px] text-slate-500 block mb-1">北界 (Lat Max) : {mapBounds.maxLat}</label>
+                                                <input type="range" min="24" max="27" step="0.01" value={mapBounds.maxLat} onChange={e => setMapBounds({...mapBounds, maxLat: parseFloat(e.target.value)})} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer" />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] text-slate-500 block mb-1">南界 (Lat Min) : {mapBounds.minLat}</label>
+                                                <input type="range" min="21" max="24" step="0.01" value={mapBounds.minLat} onChange={e => setMapBounds({...mapBounds, minLat: parseFloat(e.target.value)})} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer" />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] text-slate-500 block mb-1">西界 (Lon Min) : {mapBounds.minLon}</label>
+                                                <input type="range" min="118" max="121" step="0.01" value={mapBounds.minLon} onChange={e => setMapBounds({...mapBounds, minLon: parseFloat(e.target.value)})} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer" />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] text-slate-500 block mb-1">東界 (Lon Max) : {mapBounds.maxLon}</label>
+                                                <input type="range" min="121" max="124" step="0.01" value={mapBounds.maxLon} onChange={e => setMapBounds({...mapBounds, maxLon: parseFloat(e.target.value)})} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer" />
+                                            </div>
+                                            <div className="pt-2 border-t border-slate-100">
+                                                <button onClick={() => { setMapBounds(DEFAULT_MAP_BOUNDS); }} className="text-xs text-rose-500 underline w-full text-center">重置預設值</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 地圖圖例 */}
+                                <div className="absolute top-4 right-4 z-10 flex flex-col gap-1 text-[10px] bg-white/90 p-2 rounded-lg border border-slate-200 shadow-sm">
+                                    <div className="flex items-center gap-1"><div className="w-2 h-2 bg-rose-500 rounded-full"></div> 百岳</div>
+                                    <div className="flex items-center gap-1"><div className="w-2 h-2 bg-sky-500 rounded-full"></div> 小百岳</div>
+                                    <div className="flex items-center gap-1"><div className="w-2 h-2 bg-amber-500 rounded-full"></div> 郊山</div>
+                                </div>
+
+                                {/* --- 地圖顯示區 --- */}
+                                <div className="relative w-full h-[600px] bg-slate-100 rounded-xl overflow-hidden border border-slate-300">
+                                    
+                                    {/* 底圖：使用 img 標籤載入用戶圖片 */}
+                                    {/* 注意：這裡使用 object-contain 確保圖片完整顯示，您可以根據需要改為 object-fill 配合校正 */}
+                                    <img 
+                                        src="./taiwan_map.png" 
+                                        alt="Taiwan Map" 
+                                        className="absolute inset-0 w-full h-full object-fill opacity-90"
+                                        onError={(e) => {
+                                            e.target.style.display = 'none';
+                                            // 如果圖片載入失敗，顯示提示文字
+                                            e.target.parentNode.classList.add('flex', 'items-center', 'justify-center');
+                                            e.target.parentNode.innerHTML += '<div class="text-center p-4"><p class="font-bold text-slate-500">找不到地圖圖片</p><p class="text-xs text-slate-400 mt-2">請確認檔名為 taiwan_map.png<br/>並放在同一資料夾中</p></div>';
+                                        }}
+                                    />
+
+                                    {/* 疊加層：山岳點位 */}
+                                    {/* 使用絕對定位將點疊在圖上，根據校正後的百分比位置 */}
+                                    <div className="absolute inset-0">
+                                        {peaks.map(peak => {
+                                            // 如果沒有座標則不顯示
+                                            if (!peak.lat || !peak.lon) return null;
+                                            
+                                            // 簡單過濾
+                                            if (filterLocation !== 'all' && !peak.location.includes(filterLocation)) return null;
+
+                                            const { x, y } = getCoordinates(peak.lat, peak.lon);
+                                            
+                                            // 檢查是否超出邊界
+                                            if (x < 0 || x > 100 || y < 0 || y > 100) return null;
+
+                                            const isCompleted = peak.logs.length > 0;
+                                            let bgClass = 'bg-slate-400';
+                                            if (peak.type === 'baiyue') bgClass = 'bg-rose-500';
+                                            if (peak.type === 'xiaobaiyue') bgClass = 'bg-sky-500';
+                                            if (peak.type === 'suburban') bgClass = 'bg-amber-500';
+
+                                            return (
+                                                <div 
+                                                    key={peak.id}
+                                                    onClick={() => setSelectedPeak(peak)}
+                                                    className={`absolute w-3 h-3 -ml-1.5 -mt-1.5 rounded-full border border-white shadow-sm cursor-pointer hover:scale-150 transition-transform z-10 
+                                                        ${isCompleted ? bgClass : 'bg-white border-2 ' + bgClass.replace('bg-', 'border-')}
+                                                    `}
+                                                    style={{ left: `${x}%`, top: `${y}%` }}
+                                                    title={peak.name}
+                                                >
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div className="text-[10px] text-slate-400 mt-2 text-center w-full">
+                                    提示：若點位不準，請點選左上角 ⚙️ 進行校正
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 列表模式 */}
+                        {activeTab === 'baiyue' && <PeakTable type="baiyue" />}
+                        {activeTab === 'xiaobaiyue' && <PeakTable type="xiaobaiyue" />}
+                        {activeTab === 'suburban' && <PeakTable type="suburban" />}
+
+                    </main>
+
+                    {/* --- Modals --- */}
+
+                    {/* 1. 編輯/紀錄 Modal */}
+                    {selectedPeak && (
+                        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-end sm:items-center justify-center sm:p-4 backdrop-blur-sm animate-in fade-in duration-200">
+                            <div className="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                                <div className={`p-5 flex justify-between items-start ${selectedPeak.type === 'baiyue' ? 'bg-rose-50' : selectedPeak.type === 'xiaobaiyue' ? 'bg-sky-50' : 'bg-amber-50'}`}>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                            {selectedPeak.name}
+                                            {selectedPeak.logs.length > 0 && <CheckCircle2 size={18} className="text-emerald-500" />}
+                                        </h2>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            <span className="text-xs px-2 py-0.5 rounded bg-white/60 border border-slate-200 text-slate-600">
+                                                {selectedPeak.location}
+                                            </span>
+                                            <span className="text-xs px-2 py-0.5 rounded bg-white/60 border border-slate-200 text-slate-600">
+                                                {selectedPeak.elevation}m
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setSelectedPeak(null)} className="p-2 bg-white/50 hover:bg-white rounded-full transition-colors text-slate-500">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+
+                                <div className="p-5 overflow-y-auto">
+                                    <div className="mb-6 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                        <label className="text-xs font-bold text-slate-400 mb-2 block uppercase">紀錄攻頂日期</label>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="date" 
+                                                value={newDate}
+                                                onChange={(e) => setNewDate(e.target.value)}
+                                                className="flex-1 p-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                                            />
+                                            <button 
+                                                onClick={() => addLog(selectedPeak.id, newDate)}
+                                                disabled={!newDate}
+                                                className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                                            >
+                                                <Plus size={18} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <h3 className="text-sm font-bold text-slate-700 mb-3">
+                                            歷史紀錄 ({selectedPeak.logs.length})
+                                        </h3>
+                                        <div className="space-y-2">
+                                            {selectedPeak.logs.map((date, idx) => (
+                                                <div key={idx} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-lg shadow-sm">
+                                                    <div className="flex items-center gap-3">
+                                                        <Calendar size={14} className="text-emerald-500" />
+                                                        <span className="font-mono text-slate-600 text-sm">{date}</span>
+                                                    </div>
+                                                    <button onClick={() => removeLog(selectedPeak.id, idx)} className="text-slate-300 hover:text-rose-500">
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {selectedPeak.logs.length === 0 && <p className="text-center text-slate-400 text-xs py-4">尚無紀錄</p>}
+                                        </div>
+                                    </div>
+                                    
+                                    {/* 刪除按鈕 (僅限自訂郊山) */}
+                                    {selectedPeak.type === 'suburban' && (
+                                        <div className="mt-8 pt-4 border-t border-slate-100 text-center">
+                                            <button onClick={() => deletePeak(selectedPeak.id)} className="text-rose-500 text-xs flex items-center justify-center gap-1 mx-auto hover:underline">
+                                                <Trash2 size={12} /> 刪除此山岳資料
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 2. 新增郊山 Modal */}
+                    {isAddingPeak && (
+                        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+                            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden">
+                                <div className="p-4 bg-amber-50 border-b border-amber-100 flex justify-between items-center">
+                                    <h3 className="font-bold text-amber-800 flex items-center gap-2">
+                                        <Plus size={18} /> 新增郊山資料
+                                    </h3>
+                                    <button onClick={() => setIsAddingPeak(false)} className="text-amber-800/50 hover:text-amber-800">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">山岳名稱 *</label>
+                                        <input 
+                                            type="text" 
+                                            value={newPeakData.name}
+                                            onChange={e => setNewPeakData({...newPeakData, name: e.target.value})}
+                                            className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                                            placeholder="例如：象山"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">海拔 (m)</label>
+                                            <input 
+                                                type="number" 
+                                                value={newPeakData.elevation}
+                                                onChange={e => setNewPeakData({...newPeakData, elevation: e.target.value})}
+                                                className="w-full p-2 border border-slate-300 rounded-lg outline-none"
+                                                placeholder="183"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">縣市 *</label>
+                                            <input 
+                                                type="text" 
+                                                value={newPeakData.location}
+                                                onChange={e => setNewPeakData({...newPeakData, location: e.target.value})}
+                                                className="w-full p-2 border border-slate-300 rounded-lg outline-none"
+                                                placeholder="台北市"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                                        <p className="text-[10px] text-slate-400 mb-2">座標 (選填，填寫後才會顯示在地圖上)</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <input 
+                                                type="number" step="0.0001"
+                                                value={newPeakData.lat}
+                                                onChange={e => setNewPeakData({...newPeakData, lat: e.target.value})}
+                                                className="w-full p-2 text-xs border border-slate-300 rounded bg-white"
+                                                placeholder="緯度 (Lat) 例如: 25.02"
+                                            />
+                                            <input 
+                                                type="number" step="0.0001"
+                                                value={newPeakData.lon}
+                                                onChange={e => setNewPeakData({...newPeakData, lon: e.target.value})}
+                                                className="w-full p-2 text-xs border border-slate-300 rounded bg-white"
+                                                placeholder="經度 (Lon) 例如: 121.57"
+                                            />
+                                        </div>
+                                    </div>
+                                    
+                                    <button 
+                                        onClick={handleCreatePeak}
+                                        className="w-full bg-amber-600 text-white py-3 rounded-xl font-bold hover:bg-amber-700 transition-colors shadow-lg shadow-amber-200 mt-2"
+                                    >
+                                        儲存資料
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
